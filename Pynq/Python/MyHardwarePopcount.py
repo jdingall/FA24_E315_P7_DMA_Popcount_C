@@ -39,27 +39,10 @@ class MyHardwarePopcount():
         return self.mmioRead()
     
     def dmaCountInt(self,n):
-        self.mmioReset()
-        inbuf = allocate(shape=(1,), dtype=np.int32)
-        inbuf[0] = n
-        self.dma.sendchannel.transfer(inbuf)
-        self.dma.sendchannel.wait()
-        return self.mmioRead()
+        # Insert P5 solution
     
     def dmaCountArray(self, buf):
-        self.mmioReset()
-        i = 0
-        MAX=4095
-        LEN = len(buf)
-        while (i < LEN):
-            sz = MAX if i+MAX < LEN else LEN -i
-            inbuf = allocate(shape=(sz,), dtype=np.int32)
-            np.copyto(inbuf, buf[i:i+sz])
-            self.dma.sendchannel.transfer(inbuf)
-            self.dma.sendchannel.wait()
-            i += MAX
-        return self.mmioRead()
-        
+        # Insert P5 solution
 
     def countInt(self, n):        
         if self.mode == 'mmio':
