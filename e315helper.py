@@ -31,7 +31,7 @@ class Helper():
                 return json.load(f)
         else:
             return {"IP": "192.168.2.99", 
-                    "Proj": "P4_Popcount", 
+                    "Proj": "P6_DMA_Popcount_C", 
                     "fpga_design": "bd_fpga"}
 
     def save_json(self):

@@ -72,22 +72,21 @@ void dma_tx( const uint32_t * const SRC_PADDR, const uint32_t SRC_SIZE )
 	// https://www.xilinx.com/support/documentation/ip_documentation/axi_dma/v7_1/pg021_axi_dma.pdf
 	
 	dprintf("Starting DMA transfer: %d bytes from %p\n", SRC_SIZE, SRC_PADDR);
+    
+    //TODO: Steps 1,3, and 4
 	
 	//Step 1:  Start MM2S Channel RS bit
-	*MM2S_DMACR =   0x1;
-	while ( *MM2S_DMASR & 0x1) {;} //spin until halt bit deasserts
+	
+    //spin until halt bit deasserts
 	
 	//Step 2 (Interrupts) skipped
 	
-	// Step 3:  Set Source Address
-	*MM2S_SA =  (uint32_t) SRC_PADDR;
+	//Step 3:  Set Source Address
 
-	// Step 4:  Set Number of Bytes to transfer
+	//Step 4:  Set Number of Bytes to transfer
 	// From Docs:  Writing a non-zero value to this register starts the MM2S transfer.
-	*MM2S_LENGTH = SRC_SIZE;
 
 	//Wait for completion
-	while ( !(*MM2S_DMASR & 0x2) ) {;} //spin until completed
 
 	dprintf("DMA transfer complete\n");
 
@@ -192,37 +191,13 @@ int main(int argc, char **argv)
 	dprintf("Reading input file\n");
     uint8_t * data_ptr;
 	ssize_t buf_cnt;
-    ssize_t remainder;
+    
+    //TODO: read file in chunks of udma_size and send the chunks to popcount module using dma_tx function
 
-	while (1) {
-        //read into buffer
-		buf_cnt = read(input_fd, udma_buf_vaddr, udma_size);
-		if (buf_cnt < 0) {
-			perror("read()");
-			exit(1);
-		} else if (buf_cnt == 0) {
-			break; //EOF
-		} else {
-			// Feed the data into the counter in 4-byte chunks
-            remainder = buf_cnt % 4;
-            dma_tx((uint32_t*)udma_buf_paddr, buf_cnt - remainder);
-			data_ptr = udma_buf_vaddr + buf_cnt - remainder;
-            buf_cnt = remainder; 
-            
-            // Feed any remaining bytes 1 byte at a time with MMIO
-			while (buf_cnt > 0) {
-				*count_reg = *data_ptr;
-				data_ptr++;
-				buf_cnt--;
-                remainder--;
-			}
-		}
-	}
-//    ssize_t bytes;
-//	while(( bytes = read(input_fd, udma_buf_vaddr, udma_size)) > 0){
-//		dprintf("Read %d bytes\n", bytes);
-//		dma_tx(udma_buf_paddr, udma_size);
-//	//}
+	
+    
+    
+    
 	// Read the bit count result
 	printf("Counted %u ones\n", *count_reg);
 

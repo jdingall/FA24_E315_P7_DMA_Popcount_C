@@ -11,7 +11,7 @@ user_mmio: user_mmio.c
 	$(CC) $(OPT_FLAGS) -o user_mmio user_mmio.c
 
 user_dma: user_dma.c
-	$(CC) $(OPT_FLAGS) -o user_dma user_dma.c
+	$(CC) $(OPT_FLAGS) $(DBG_FLAGS) -o user_dma user_dma.c
 
 .PHONY: clean
 clean:  
