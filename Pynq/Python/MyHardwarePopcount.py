@@ -40,9 +40,11 @@ class MyHardwarePopcount():
     
     def dmaCountInt(self,n):
         # Insert P5 solution
+        raise Exception("Unimplimented")
     
     def dmaCountArray(self, buf):
         # Insert P5 solution
+        raise Exception("Unimplimented")
 
     def countInt(self, n):        
         if self.mode == 'mmio':
