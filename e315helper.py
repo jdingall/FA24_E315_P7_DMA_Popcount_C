@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import logging
 import json
 import os
 import shutil
@@ -12,6 +13,8 @@ import re
 class Helper():
 
     def __init__(self, vivado=None):
+        
+        self.checkOS()
 
         self.MY_DIR = os.path.dirname(os.path.realpath(__file__))
         self.JF = self.MY_DIR + '/.data.json'
@@ -21,6 +24,22 @@ class Helper():
         self.vivado = vivado
 
         self.version = "1.0.0"
+
+    def checkOS(self):
+        platform = sys.platform
+        if platform == "linux" or platform == "linux2":
+            logging.debug("Found Linux")
+        elif platform == "darwin":
+            logging.debug("Found OSX")
+            raise Exception("OSX Not Supported")
+        elif platform == "win32":
+            logging.debug("Found Windows")
+            raise Exception("Windows Not Supported")
+        
+        #check if running on the Pynq
+        if os.path.exists('/dev/uio0'):
+            logging.debug("found /dev/uio0, means Pynq")
+            raise Exception("Running on Pynq not supported.  Run on the host machine.")
     
     def getVersion(self):
         return self.version
@@ -31,20 +50,36 @@ class Helper():
                 return json.load(f)
         else:
             return {"IP": "192.168.2.99", 
-                    "Proj": "P6_DMA_Popcount_C", 
-                    "fpga_design": "bd_fpga"}
+                    "Proj": "P7_DMA_Popcount_C", 
+                    "fpga_design": "bd_fpga",
+                    "branch": "master"}
 
     def save_json(self):
-         with open(self.JF, 'w') as f:
+        logging.debug("saving JSON to " + self.JF)
+        with open(self.JF, 'w') as f:
             json.dump( self.J, f) 
 
      
-
     def run_command(self, command):
         print ('running: ', command)
         result = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
         return result.communicate()
 
+    def vivado_build_cleanup(self,):
+        vsrc_dir = self.MY_DIR + '/verilog/vsrc/'
+        bd_name = self.J['fpga_design']
+        cleanups = [ bd_name+'.bda', bd_name+'.bxml', bd_name+'_ooc.xml', 
+                     'hdl', 'hw_handoff', 'ip', 'ipshared', 'sim', 'synth' ]
+        cleanups = [ vsrc_dir + bd_name + '/' + x for x in cleanups]
+        for f in cleanups: 
+            try: 
+                shutil.rmtree(f) 
+                logging.debug('cleanup: ' + f)
+            except NotADirectoryError: 
+                os.remove(f)
+                logging.debug('cleanup: ' + f)
+            except FileNotFoundError:
+                logging.debug('skipped: ' + f) 
 
     def build_vivado(self,):
         #sanity check
@@ -52,19 +87,26 @@ class Helper():
             print ("Found Vivado Project, Skipping.")
             return
 
-        command = 'vivado -mode batch -source ' + self.J['Proj'] + '.tcl'
+        #remove remnents of old builds
+        self.vivado_build_cleanup()
+
+        command = 'vivado -mode batch -source tcl/setup.tcl' 
 
         if self.vivado != None:
-            print ("vivado specified from command line")
+            logging.debug ("vivado specified from command line")
             command = command.replace('vivado', self.vivado)
-
+            fixup = fixup.replace('vivado', self.vivado)
         elif shutil.which('vivado') != None:
-            print ("Found Vivado")
+            logging.debug ("Found Vivado")
         else:
             raise Exception("Vivado not found!")
 
         print ("Building Vivado Project")
         self.run_command(command) 
+
+        if os.path.exists( self.MY_DIR + '/tcl/fixup.tcl'):
+            logging.debug ("Found extra fixup tcl script, running")
+            self.run_command(fixup)
 
     def impl_vivado(self, num_cores = 1):
         #sanity check
@@ -76,10 +118,10 @@ class Helper():
                 ' -tclargs ' + self.MY_DIR + ' ' + str(num_cores)
 
         if self.vivado != None:
-            print ("vivado specified from command line")
+            logging.debug("vivado specified from command line")
             command = command.replace('vivado', self.vivado)
         elif shutil.which('vivado') != None:
-            print ("Found Vivado")
+            logging.debug("Found Vivado")
         else:
             raise Exception("Vivado not found!")
 
@@ -104,12 +146,13 @@ class Helper():
                     ssh + ' "cd ~/tmp && git init --bare" ',
                     'git remote remove tmp', 
                     'git remote add tmp xilinx@' + self.J['IP'] + ':~/tmp/',
-                    'GIT_SSH_COMMAND=\'ssh -i '+self.priv_key + '\' git push tmp master', 
+                    'GIT_SSH_COMMAND=\'ssh -i '+self.priv_key + '\' git push tmp ' + self.J['branch'], 
                     ssh + ' "git clone tmp ~/jupyter_notebooks/' + proj + ' "',
                     ssh + ' "rm -rf ~/tmp" ',
                     'git remote remove pynq', 
                     'git remote add pynq xilinx@' + self.J['IP'] + ':~/jupyter_notebooks/' + proj,
-                    'GIT_SSH_COMMAND=\'ssh -i '+self.priv_key + '\' git push pynq master', 
+                    'GIT_SSH_COMMAND=\'ssh -i '+self.priv_key + '\' git push pynq ' + self.J['branch'], 
+                    ssh + ' "cd ~/jupyter_notebooks/' + proj + ' && git checkout ' + self.J['branch'] + '"'
                    ]   
         for command in commands:                     
             self.run_command(command)
@@ -121,8 +164,8 @@ class Helper():
                             self.J['fpga_design']+'.hwh'
 
         if not os.path.exists( hwh):
-            print ('trying alternate hwh file path')
-            hwh = self.MY_DIR + '/src/vsrc/'+ self.J['fpga_design'] + '/hw_handoff/' + self.J['fpga_design'] + '.hwh'
+            logging.info('trying alternate hwh file path')
+            hwh = self.MY_DIR + '/verilog/vsrc/'+ self.J['fpga_design'] + '/hw_handoff/' + self.J['fpga_design'] + '.hwh'
 
         scp = 'scp -i ' + self.priv_key
         pynq = 'xilinx@'+self.J['IP'] + ':~/jupyter_notebooks/' + self.J['Proj'] + '/Pynq/'
@@ -133,6 +176,29 @@ class Helper():
                    ]
         for command in commands:                     
             self.run_command(command)
+
+    def update(self):
+        ''' running git update from master and pushing to pynq '''
+        ssh = 'ssh -i ' + self.priv_key + ' xilinx@'+self.J['IP'] 
+        proj = self.J['Proj']
+
+        commands = [
+                    'git pull origin ' + self.J['branch'], 
+                    ssh + ' "cd ~/jupyter_notebooks/' + proj + ' && git commit -a -m \\"e315helper.py update\\" ' + '"',
+                    'GIT_SSH_COMMAND=\'ssh -i '+self.priv_key + '\' git pull pynq ' + self.J['branch'], 
+
+                    ssh + ' "mkdir -p ~/tmp" ',
+                    ssh + ' "cd ~/tmp && git init --bare" ',
+                    'git remote remove tmp', 
+                    'git remote add tmp xilinx@' + self.J['IP'] + ':~/tmp/',
+                    'GIT_SSH_COMMAND=\'ssh -i '+self.priv_key + '\' git push tmp ' + self.J['branch'], 
+                    ssh + ' "cd ~/jupyter_notebooks/' + proj + ' && git pull origin ' + self.J['branch'] + '"',
+                    ssh + ' "rm -rf ~/tmp" ',
+        ]
+
+        for command in commands:                     
+            self.run_command(command)
+
 
     def set_ip(self, IP):
         # https://www.geeksforgeeks.org/python-program-to-validate-an-ip-address/
@@ -164,6 +230,7 @@ class Parser():
 
     def __init__ (self):
         ap = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
+        ap.add_argument('-d', '--debug', action='store_true', help="Enable Debug Mode")
 
         sap = ap.add_subparsers(title='command', dest="command")
 
@@ -187,6 +254,8 @@ class Parser():
         bitstream_ap= sap.add_parser('bitstream', help='write the bitstream to the Pynq')
         bitstream_ap.add_argument('--ip', type=str, nargs='?', help="Ip Address of Pynq")
 
+        update_ap= sap.add_parser('update', help='update from git') 
+
         setIp_ap= sap.add_parser('setIp', help='set the Pynq\'s IP address')
         setIp_ap.add_argument('--ip', type=str, nargs='?', help="Ip Address of Pynq")
 
@@ -194,12 +263,22 @@ class Parser():
 
         init_ap.set_defaults(function=self.init)
         args = ap.parse_args()
-        
-        if not hasattr(self, args.command):
-            print ('Unrecognized Command')
+
+        # load debug mode
+        if args.debug: 
+            logging.basicConfig(format='%(levelname)s:%(message)s',
+                                level=logging.DEBUG, 
+                                handlers = [
+                                    logging.FileHandler('debug.log', mode='w'),
+                                    logging.StreamHandler()
+                                ])
+            logging.debug("Enabling Debug")
+
+        if args.command == None: 
+            print ('No command specified!')
             ap.print_help()
             exit(1)
-        
+
         #jump to the correct command function
         getattr(self, args.command)(args)
 
@@ -239,6 +318,10 @@ class Parser():
             h.set_ip(args.ip)
         h.load_bitstream()
 
+    def update(self, args):
+        print('Running update')
+        h = Helper()
+        h.update()
 
     def setIp(self, args):
         print ('Running setIp')
