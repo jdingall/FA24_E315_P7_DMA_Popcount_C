@@ -62,7 +62,7 @@ class Helper():
      
     def run_command(self, command):
         print ('running: ', command)
-        result = subprocess.Popen(command, shell=True, executable='usr/bin/bash', stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+        result = subprocess.Popen(command, shell=True, executable='/usr/bin/bash', stdout=subprocess.PIPE, stdin=subprocess.PIPE)
         return result.communicate()
 
     def vivado_build_cleanup(self,):
